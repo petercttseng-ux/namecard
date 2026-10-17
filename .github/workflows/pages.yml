@@ -26,7 +26,8 @@ jobs:
       - name: Prepare public files
         run: |
           mkdir public
-          cp index.html style.css app.js contacts.js public/
+          cp index.html style.css app.js contacts.js ocr.js public/
+          cp -r ocr-data vendor public/
           touch public/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
