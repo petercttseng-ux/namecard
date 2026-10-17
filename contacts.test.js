@@ -1,0 +1,5 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {validateContacts,filterContacts} from './contacts.js';
+test('reject malformed backups, normalize data and block unsafe image sources',()=>{assert.throws(()=>validateContacts({}));assert.throws(()=>validateContacts([{name:''}]));assert.throws(()=>validateContacts([{name:'曾',phone:123}]));const [c]=validateContacts([{name:' 測試 ',category:'unknown',photo:'javascript:alert(1)',createdAt:'invalid'}]);assert.equal(c.name,'測試');assert.equal(c.category,'其他聯絡');assert.equal(c.photo,'');assert.ok(Number.isFinite(Date.parse(c.createdAt)));});
+test('search, classification, favorites, recent and sorting compose correctly',()=>{const rows=validateContacts([{name:'甲',company:'研究院',category:'學術研究',starred:true,createdAt:new Date().toISOString()},{name:'乙',company:'公司',category:'產業夥伴',createdAt:'2020-01-01'}]);assert.equal(filterContacts(rows,{query:'研究',category:'學術研究',view:'star'}).length,1);assert.equal(filterContacts(rows,{query:'公司',view:'star'}).length,0);assert.equal(filterContacts(rows,{view:'recent'}).length,1);assert.equal(filterContacts(rows,{sort:'new'})[0].name,'甲');});
