@@ -1,3 +1,4 @@
+import {loadPhoto,transformPhoto} from './image-tools.js';
 import {extractFields,recognizeCard} from './ocr.js';
 import {categories,validateContacts,filterContacts} from './contacts.js';
 const $=s=>document.querySelector(s), key='de-cang-contacts-v1';
@@ -16,9 +17,9 @@ document.addEventListener('click',e=>{const cat=e.target.closest('[data-cat]');i
 $('#cards').addEventListener('keydown',e=>{if(e.target.classList.contains('card')&&['Enter',' '].includes(e.key)){e.preventDefault();showDetail(e.target.dataset.id);}});
 for(const type of ['grid','list'])$('#'+type+'View').onclick=()=>{layout=type;$('#gridView').classList.toggle('selected',type==='grid');$('#listView').classList.toggle('selected',type==='list');render();};
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('#search').focus();}});
-function openEditor(c){ocrVersion++;ocrBusy=false;$('#ocrStatus').textContent='上傳照片即可自動辨識；辨識結果請核對後儲存。';$('#ocrText').value='';editing=c?.id||null;photo=c?.photo||'';$('#cardForm').reset();$('#cardForm').elements.category.value='';$('#modalTitle').textContent=c?'編輯名片':'新增名片';if(c)for(const k of ['name','title','company','category','phone','email','address','notes','starred']){const input=$('#cardForm').elements[k];if(k==='starred')input.checked=c[k];else input.value=c[k]||'';}updatePhoto();$('#editor').showModal();}
-function updatePhoto(){$('#recognizeBtn').disabled=!photo||ocrBusy;$('#photoPreview').hidden=!photo;$('#removePhoto').hidden=!photo;if(photo)$('#photoPreview').src=photo;else $('#photoPreview').removeAttribute('src');}
-$('#removePhoto').onclick=()=>{ocrVersion++;ocrBusy=false;$('#ocrText').value='';$('#ocrStatus').textContent='照片已移除';photo='';$('#cardForm').elements.photo.value='';updatePhoto();};
+function openEditor(c){$('#ocrStatus').classList.remove('needs-review');autoFields={};ocrResults=[];$('#ocrAlternative').innerHTML='<option value="0">建議辨識結果</option>';$('#cropEditor').hidden=true;ocrVersion++;ocrBusy=false;$('#ocrStatus').textContent='上傳照片即可自動辨識；辨識結果請核對後儲存。';$('#ocrText').value='';editing=c?.id||null;photo=c?.photo||'';$('#cardForm').reset();$('#cardForm').elements.category.value='';$('#modalTitle').textContent=c?'編輯名片':'新增名片';if(c)for(const k of ['name','title','company','category','phone','email','address','notes','starred']){const input=$('#cardForm').elements[k];if(k==='starred')input.checked=c[k];else input.value=c[k]||'';}updatePhoto();$('#editor').showModal();}
+function updatePhoto(){for(const id of ['rotateLeft','rotateRight','cropPhoto'])$('#'+id).disabled=!photo||ocrBusy;$('#cardForm').elements.photo.disabled=ocrBusy;$('#cardForm button[type=submit]').disabled=ocrBusy;$('#recognizeBtn').disabled=!photo||ocrBusy;$('#photoPreview').hidden=!photo;$('#removePhoto').hidden=!photo;if(photo)$('#photoPreview').src=photo;else $('#photoPreview').removeAttribute('src');}
+$('#removePhoto').onclick=()=>{$('#cropEditor').hidden=true;ocrVersion++;ocrBusy=false;$('#ocrText').value='';$('#ocrStatus').textContent='照片已移除';photo='';$('#cardForm').elements.photo.value='';updatePhoto();};
 $('#cardForm').elements.photo.onchange=async e=>{const file=e.target.files[0];if(!file)return;if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>3*1024*1024){toast('請選擇 3 MB 以下的 PNG、JPEG 或 WebP 圖片。');e.target.value='';return;}const readVersion=++ocrVersion;ocrBusy=false;const reader=new FileReader();reader.onload=()=>{if(readVersion!==ocrVersion)return;photo=reader.result;updatePhoto();runRecognition();};reader.onerror=()=>toast('照片讀取失敗，請重新選擇。');reader.readAsDataURL(file);};
 $('#addBtn').onclick=()=>openEditor();document.querySelectorAll('#editor .close').forEach(b=>b.onclick=()=>$('#editor').close());
 $('#cardForm').onsubmit=e=>{e.preventDefault();if(ocrBusy){toast('名片辨識中，請等待完成或關閉後重新開啟。');return;}const data=new FormData(e.target);if(!String(data.get('name')).trim()){toast('請填寫姓名。');return;}const previous=contacts.find(c=>c.id===editing);const c={id:editing||crypto.randomUUID(),createdAt:previous?.createdAt||new Date().toISOString(),photo,starred:data.has('starred'),demo:false};for(const k of ['name','title','company','category','phone','email','address','notes'])c[k]=String(data.get(k)||'').trim();if(!c.category)c.category='其他聯絡';if(persist(editing?contacts.map(x=>x.id===editing?c:x):[c,...contacts])){$('#editor').close();toast(editing?'名片已更新':'名片已新增');}};
@@ -27,8 +28,68 @@ function download(data,name,type){const url=URL.createObjectURL(new Blob([data],
 $('#exportBtn').onclick=()=>{download(JSON.stringify(contacts,null,2),`德藏名片備份-${new Date().toLocaleDateString('sv-SE')}.json`,'application/json');toast('已匯出名片備份，請妥善保管個人聯絡資料。');};$('#importBtn').onclick=()=>$('#importFile').click();$('#importFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>20*1024*1024)throw Error('備份檔案不得超過 20 MB。');const incoming=validateContacts(JSON.parse(await f.text()));if(contacts.length+incoming.length>5000)throw Error('匯入後不得超過 5,000 筆名片。');if(!incoming.length)throw Error('此備份沒有名片。');if(confirm(`將新增 ${incoming.length} 張名片，保留現有資料。是否繼續？`)&&persist([...incoming,...contacts]))toast(`已匯入 ${incoming.length} 張名片`);}catch(err){toast(err instanceof SyntaxError?'無法讀取 JSON 備份，請確認檔案格式。':err.message);}finally{e.target.value='';}};
 render();
 
-let ocrVersion=0,ocrBusy=false;
-function applyExtracted(text){const fields=extractFields(text);let count=0;for(const [key,value] of Object.entries(fields)){const input=$('#cardForm').elements[key];if(value&&!input.value.trim()){input.value=value;count++;}}return count;}
-async function runRecognition(){if(!photo||ocrBusy)return;const version=++ocrVersion;ocrBusy=true;updatePhoto();$('#ocrStatus').textContent='正在載入辨識元件與語言資料…';try{const text=await recognizeCard(photo,m=>{if(version!==ocrVersion)return;const labels={'recognizing text':'正在辨識文字','loading language traineddata':'正在下載語言資料','initializing api':'正在初始化','loading tesseract core':'正在載入辨識引擎'};$('#ocrStatus').textContent=(labels[m.status]||'正在準備辨識')+' '+Math.round((m.progress||0)*100)+'%';});if(version!==ocrVersion)return;$('#ocrText').value=text;const count=applyExtracted(text);$('#ocrStatus').textContent=text.trim()?`辨識完成，已填入 ${count} 個空白欄位。請核對姓名、電話與其他資訊後儲存。`:'未能辨識出文字，請使用清晰、光線均勻且方向正確的照片重試。';}catch{if(version===ocrVersion)$('#ocrStatus').textContent='辨識失敗，請檢查網路及照片格式後重試。仍可手動填寫並儲存名片。';}finally{if(version===ocrVersion){ocrBusy=false;updatePhoto();}}}
+let ocrVersion=0,ocrBusy=false,autoFields={},ocrResults=[];
+function applyExtracted(text){
+ const fields=extractFields(text);let count=0;
+ for(const [key,value] of Object.entries(fields)){
+  const input=$('#cardForm').elements[key];
+  // Replace earlier OCR guesses, while preserving manual entries and corrections.
+  if(value&&(!input.value.trim()||input.value===autoFields[key])){input.value=value;autoFields[key]=value;count++;}
+ }
+ return count;
+}
+async function runRecognition(){
+ if(!photo||ocrBusy)return;
+ const version=++ocrVersion;ocrBusy=true;updatePhoto();
+ $('#ocrStatus').textContent='正在載入高精度語言模型，首次載入可能較久…';
+ try{
+  const result=await recognizeCard(photo,m=>{
+   if(version!==ocrVersion)return;
+   const labels={'preprocessing':'正在放大小字、調整對比','pass-sparse':'第一輪：分散文字辨識','pass-layout':'第二輪：整體版面辨識','recognizing text':'正在辨識文字','loading language traineddata':'正在載入高精度語言資料','initializing api':'正在初始化','loading tesseract core':'正在載入辨識引擎'};
+   $('#ocrStatus').textContent=(labels[m.status]||'正在準備辨識')+' '+Math.round((m.progress||0)*100)+'%';
+  });
+  if(version!==ocrVersion)return;
+  const {text,confidence,alternatives=[]}=result;
+  ocrResults=[text,...alternatives];
+  $('#ocrAlternative').innerHTML=ocrResults.map((_,i)=>`<option value="${i}">${i?'另一版辨識結果':'建議辨識結果'}</option>`).join('');
+  $('#ocrText').value=text;
+  const count=applyExtracted(text);
+  const recognized=extractFields(text);const incomplete=!recognized.name||!recognized.company;const low=confidence<75||incomplete;
+  $('#ocrStatus').classList.toggle('needs-review',low);
+  $('#ocrStatus').textContent=text.trim()?`辨識完成，已填入或更新 ${count} 個欄位。${incomplete?'姓名或機構未完整辨識，建議裁切名片後重試。':low?'辨識信心偏低，建議裁切名片、調整方向後重試。':'請核對姓名、電話與其他資訊後儲存。'} 引擎信心分數 ${Math.round(confidence)}/100（非準確率）。`:'未能辨識出文字，請先裁切名片範圍、調整方向或重拍清晰照片。';
+ }catch{
+  if(version===ocrVersion)$('#ocrStatus').textContent='辨識失敗，請檢查網路及照片格式後重試。仍可手動填寫並儲存名片。';
+ }finally{
+  if(version===ocrVersion){ocrBusy=false;updatePhoto();}
+ }
+}
 $('#recognizeBtn').onclick=runRecognition;
-$('#extractBtn').onclick=()=>{const count=applyExtracted($('#ocrText').value);$('#ocrStatus').textContent=`已從原文填入 ${count} 個空白欄位，請核對後儲存。`;};
+$('#extractBtn').onclick=()=>{const count=applyExtracted($('#ocrText').value);$('#ocrStatus').textContent=`已從原文填入或更新 ${count} 個欄位，保留手動修正，請核對後儲存。`;};
+$('#ocrAlternative').onchange=()=>{$('#ocrText').value=ocrResults[Number($('#ocrAlternative').value)]||'';};
+async function changePhoto(options){
+ if(!photo||ocrBusy)return;
+ try{
+  photo=await transformPhoto(photo,options);$('#cropEditor').hidden=true;updatePhoto();await runRecognition();
+ }catch(error){toast(error.message);}
+}
+$('#rotateLeft').onclick=()=>changePhoto({rotation:-90});
+$('#rotateRight').onclick=()=>changePhoto({rotation:90});
+let cropImage,cropStart,cropRect;
+const cropCanvas=$('#cropCanvas'), cropContext=cropCanvas.getContext('2d');
+function drawCrop(){
+ if(!cropImage)return;
+ cropContext.clearRect(0,0,cropCanvas.width,cropCanvas.height);
+ cropContext.drawImage(cropImage,0,0,cropCanvas.width,cropCanvas.height);
+ if(cropRect){cropContext.strokeStyle='#42ba71';cropContext.lineWidth=3;cropContext.fillStyle='#315c4d30';cropContext.fillRect(cropRect.x,cropRect.y,cropRect.width,cropRect.height);cropContext.strokeRect(cropRect.x,cropRect.y,cropRect.width,cropRect.height);}
+}
+$('#cropPhoto').onclick=async()=>{
+ if(!photo||ocrBusy)return;
+ try{cropImage=await loadPhoto(photo);const scale=Math.min(1,900/cropImage.width);cropCanvas.width=Math.round(cropImage.width*scale);cropCanvas.height=Math.round(cropImage.height*scale);cropRect=null;cropStart=null;$('#applyCrop').disabled=true;$('#cropEditor').hidden=false;drawCrop();}catch{toast('圖片讀取失敗，請重新上傳。');}
+};
+function cropPoint(event){const bounds=cropCanvas.getBoundingClientRect();return {x:Math.max(0,Math.min(cropCanvas.width,(event.clientX-bounds.left)*cropCanvas.width/bounds.width)),y:Math.max(0,Math.min(cropCanvas.height,(event.clientY-bounds.top)*cropCanvas.height/bounds.height))};}
+cropCanvas.onpointerdown=event=>{cropStart=cropPoint(event);cropCanvas.setPointerCapture(event.pointerId);cropRect=null;$('#applyCrop').disabled=true;};
+cropCanvas.onpointermove=event=>{if(!cropStart)return;const point=cropPoint(event);cropRect={x:Math.min(cropStart.x,point.x),y:Math.min(cropStart.y,point.y),width:Math.abs(point.x-cropStart.x),height:Math.abs(point.y-cropStart.y)};drawCrop();};
+cropCanvas.onpointerup=()=>{cropStart=null;$('#applyCrop').disabled=!cropRect||cropRect.width<30||cropRect.height<30;};
+cropCanvas.onpointercancel=()=>{cropStart=null;cropRect=null;$('#applyCrop').disabled=true;drawCrop();};
+$('#cancelCrop').onclick=()=>{$('#cropEditor').hidden=true;};
+$('#applyCrop').onclick=()=>{if(!cropRect||!cropImage)return;const sx=cropImage.width/cropCanvas.width,sy=cropImage.height/cropCanvas.height;changePhoto({crop:{x:cropRect.x*sx,y:cropRect.y*sy,width:cropRect.width*sx,height:cropRect.height*sy}});};

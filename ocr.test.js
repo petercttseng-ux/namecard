@@ -1,6 +1,10 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {extractFields} from './ocr.js';
+import {extractFields, chooseRecognition} from './ocr.js';
 test('extract Traditional Chinese contact fields and exclude fax',()=>{const fields=extractFields('曾 振 德\n副所長\n前瞻研究所\nTel: 02-2345-6789\nFax: 02-9999-8888\nEmail: test@example.com\n地址: 臺北市中正區信義路一段1號');assert.equal(fields.name,'曾振德');assert.equal(fields.title,'副所長');assert.equal(fields.company,'前瞻研究所');assert.equal(fields.phone,'02-2345-6789');assert.equal(fields.email,'test@example.com');assert.equal(fields.address,'臺北市中正區信義路一段1號');assert.equal(fields.category,'學術研究');});
 test('extract English card and leave missing fields blank',()=>{const f=extractFields('Jane Chen\nDirector\nAcme Ltd\n+886 912-345-678\njane@acme.com');assert.equal(f.name,'Jane Chen');assert.equal(f.title,'Director');assert.equal(f.company,'Acme Ltd');assert.equal(f.phone,'+886 912-345-678');assert.equal(f.category,'產業夥伴');assert.equal(f.address,'');assert.deepEqual(extractFields(''),{name:'',company:'',title:'',phone:'',email:'',address:'',category:''});});
 test('split Chinese name and title on the same line',()=>{const f=extractFields('前瞻研究所\n曾振德 副所長\n02-2345-6789');assert.equal(f.name,'曾振德');assert.equal(f.title,'副所長');});
+test('normalize fullwidth and spaced labels without losing phone before fax',()=>{const f=extractFields('姓名：陳思穎\n職稱：副所長\n機構：中華測試研究所\n電話：(02) 2345 - 6789 傳真：02-1111-2222\nEmail：chen ＠ example．com\n地址：臺北市大安區和平路1號');assert.equal(f.name,'陳思穎');assert.equal(f.company,'中華測試研究所');assert.equal(f.email,'chen@example.com');assert.match(f.phone,/2345/);assert.doesNotMatch(f.phone,/1111/);});
+test('reverse inline title, multiline address and IDs are handled conservatively',()=>{const f=extractFields('前瞻研究所\n副所長 曾振德\n統編:12345678\n地址: 臺北市信義區松仁路1號');assert.equal(f.name,'曾振德');assert.equal(f.title,'副所長');assert.equal(f.phone,'');});
+
+test('select usable OCR candidate rather than the last pass unconditionally',()=>{const a={text:'曾振德\n副所長\n前瞻研究所\n02-2345-6789',confidence:88};const b={text:'###',confidence:30};assert.equal(chooseRecognition([b,a]),a);});

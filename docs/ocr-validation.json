@@ -1,0 +1,121 @@
+{
+  "scope": "Synthetic fixtures only. Same fictional card rendered at five layouts/quality levels. Not a real-world accuracy estimate. Character edit distance includes reading-order differences and is not a field accuracy metric.",
+  "baselineCommit": "ac70678",
+  "results": [
+    {
+      "type": "small",
+      "expected": "曾振德\n副所長\n前瞻研究所\n02-2345-6789\njane@example.com",
+      "old": "曾 振 德\n\n副 所 長\n\n前 瞻 研 究 所\n02-2345-6789\njane@example.com\n",
+      "next": "曾振德\n\n副所長\n\n前瞻研究所\n\n02-2345-6789\n\njane@example.com\n",
+      "fields": {
+        "name": "曾振德",
+        "company": "前瞻研究所",
+        "title": "副所長",
+        "phone": "02-2345-6789",
+        "email": "jane@example.com",
+        "address": "",
+        "category": "學術研究"
+      },
+      "baseline": {
+        "errors": 0,
+        "characters": 39
+      },
+      "improved": {
+        "errors": 0,
+        "characters": 39
+      }
+    },
+    {
+      "type": "dark",
+      "expected": "曾振德\n副所長\n前瞻研究所\n02-2345-6789\njane@example.com",
+      "old": "曾 振 德\n\n副 所 長\n\n前 瞻 研究 所\n02-2345-6789\njane@example.com\n",
+      "next": "曾振德\n\n副所長\n\n前瞻研究所\n\n02-2345-6789\n\njane@example.com\n",
+      "fields": {
+        "name": "曾振德",
+        "company": "前瞻研究所",
+        "title": "副所長",
+        "phone": "02-2345-6789",
+        "email": "jane@example.com",
+        "address": "",
+        "category": "學術研究"
+      },
+      "baseline": {
+        "errors": 0,
+        "characters": 39
+      },
+      "improved": {
+        "errors": 0,
+        "characters": 39
+      }
+    },
+    {
+      "type": "columns",
+      "expected": "曾振德\n副所長\n前瞻研究所\n02-2345-6789\njane@example.com",
+      "old": "曾 振 德\n副 所 長 02-2345-6789\n前 瞻 研究 所 jane@example.com\n",
+      "next": "曾振德\n\n02-2345-6789\n\n副所長\n\njane@example.com\n\n前瞻研究所\n",
+      "fields": {
+        "name": "曾振德",
+        "company": "前瞻研究所",
+        "title": "副所長",
+        "phone": "02-2345-6789",
+        "email": "jane@example.com",
+        "address": "",
+        "category": "學術研究"
+      },
+      "baseline": {
+        "errors": 10,
+        "characters": 39
+      },
+      "improved": {
+        "errors": 16,
+        "characters": 39
+      }
+    },
+    {
+      "type": "blur",
+      "expected": "曾振德\n副所長\n前瞻研究所\n02-2345-6789\njane@example.com",
+      "old": "曾 振 德\n\n副 所 長\n\n前 瞻 研 究 所\n02-2345-6789\njane@example.com\n",
+      "next": "曾振德\n\n副所長\n\n前瞻研究所\n\n02-2345-6789\n\njane@example.com\n",
+      "fields": {
+        "name": "曾振德",
+        "company": "前瞻研究所",
+        "title": "副所長",
+        "phone": "02-2345-6789",
+        "email": "jane@example.com",
+        "address": "",
+        "category": "學術研究"
+      },
+      "baseline": {
+        "errors": 0,
+        "characters": 39
+      },
+      "improved": {
+        "errors": 0,
+        "characters": 39
+      }
+    },
+    {
+      "type": "tiny",
+      "expected": "曾振德\n副所長\n前瞻研究所\n02-2345-6789\njane@example.com",
+      "old": "曾 攤 衝\n\n副 所 長\n\n前 蛻 研 究 所\n02.2345-6789\nJane@example.com\n",
+      "next": "前肉研究所\n\n02-2345-6789\n\njane@example.com\n\n",
+      "fields": {
+        "name": "",
+        "company": "前肉研究所",
+        "title": "",
+        "phone": "02-2345-6789",
+        "email": "jane@example.com",
+        "address": "",
+        "category": "學術研究"
+      },
+      "baseline": {
+        "errors": 5,
+        "characters": 39
+      },
+      "improved": {
+        "errors": 7,
+        "characters": 39
+      }
+    }
+  ]
+}
