@@ -1,39 +1,38 @@
 # 德藏 · 曾振德副所長名片管理
 
-繁體中文名片管理應用程式，使用原生 JavaScript 與 Node.js，不需 npm 安裝；瀏覽器 OCR 引擎與語言資料已隨專案提供。
+繁體中文名片管理應用程式，集中使用同一個 Supabase 名片資料庫。前端使用原生 JavaScript 與 Node.js 靜態伺服器；無需 npm 安裝執行依賴，OCR 元件已隨專案提供。
 
 ## 啟動
 
-需求：Node.js 20 以上。
+需求 Node.js 20 以上：
 
 ```sh
 cd /workspace/namecard
 npm start
 ```
 
-預設連接埠 3000，可透過 `PORT` 調整。執行 `npm test` 驗證資料匯入驗證與搜尋篩選邏輯。
+預設連接埠 3000，可透過 `PORT` 調整。執行 `npm test` 驗證資料、OCR 擷取及雲端傳輸邏輯。
 
-## 功能
+## Supabase 設定（必要）
 
-- 新增、編輯、刪除名片，上傳名片圖片自動辨識欄位，記錄交流備註。
-- 即時搜尋、分類篩選、重要聯絡人、最近 30 天新增、卡片及列表檢視。
-- JSON 備份匯出與增量匯入、個別名片 vCard 下載。
-- 桌面及行動裝置版面、鍵盤操作、搜尋快速鍵 Ctrl / Cmd + K。
+請依 [Supabase 設定說明](supabase/README.md) 建立專案、執行 [建表 SQL](supabase/schema.sql)、建立登入帳號及加入成員名單。尚未設定時，網站只顯示連線／登入畫面，不會將新資料存到 localStorage。
 
-首次開啟含六筆明確標示的虛構示範資料。可逐筆刪除或編輯。
+GitHub Pages 部署讀取 Repository Variables `SUPABASE_URL` 與 `SUPABASE_PUBLISHABLE_KEY`，讓所有裝置使用同一個專案。只可使用 publishable／anon 公開金鑰；不可使用 service_role 或 secret key。
 
-## 資料與部署範圍
+## 功能與資料
 
-資料及照片只存於目前瀏覽器的 localStorage，不會傳送至伺服器。切換瀏覽器或裝置不會同步；清除網站資料會遺失名片，請定期匯出備份。瀏覽器儲存額度有限，建議壓縮照片後上傳。匯入採新增方式，不會覆寫既有名片；重複匯入會產生重複名片。
-
-目前為單人本機版本，沒有登入驗證、雲端同步或多人權限功能。Node 伺服器只提供靜態應用程式，不保存聯絡資料。字型使用 Google Fonts，無網路時會使用系統字型。
+- 授權成員登入後共用名片、照片與交流備註；新增、編輯、刪除與收藏直接寫入 Supabase。
+- 搜尋、分類、重要聯絡人、最近新增與卡片／列表檢視。
+- JSON 備份匯入匯出、vCard 下載，支援既有瀏覽器名片明確確認後搬移；不自動搬移示範資料。
+- 同一名片的版本衝突會提示，避免不同裝置的過期編輯覆蓋；網路寫入失敗保留表單。
+- 文字及照片在同一個 PostgreSQL 資料表；以成員名單與 RLS 控制存取。照片每張上限 3 MB，列表按需載入照片。
+- 本機只儲存公開連線設定、登入 Session，以及未移除的舊名片備份。登入密碼不保存。跨裝置更新可手動重新整理，頁面閒置且可見時每 30 秒更新。
 
 ## GitHub Pages 部署
 
-專案包含 `.github/workflows/pages.yml`。在 GitHub 儲存庫的 Settings → Pages → Build and deployment 將 Source 設為 GitHub Actions。推送 `main` 後會先執行測試，再發布靜態網頁。若第一次推送時尚未啟用 Pages，請在設定完成後從 Actions 手動執行 Deploy contact manager to GitHub Pages。
+在 GitHub Settings → Pages 將 Source 設為 GitHub Actions。設定 Supabase Repository Variables 後，推送 `main` 或手動執行 Deploy contact manager to GitHub Pages。網站公開檔案由工作流程明確列出，不包含 SQL、測試或管理員憑證。
 
-部署只包含 `index.html`、`style.css`、`app.js`、`contacts.js`、`ocr.js`、`image-tools.js`、`ocr-data/`、`vendor/`，不需要 Node.js 伺服器。GitHub Pages 網址與本機網址的瀏覽器資料各自獨立，移轉既有名片時請先匯出 JSON，再於新網址匯入。
-
+瀏覽器內現有名片不會因程式更新自動消失或上傳；請從原本儲存資料的相同瀏覽器與網址登入並搬移。若原資料在其他網址，先匯出 JSON，再在新網站匯入。
 
 ## 名片照片自動建檔
 
