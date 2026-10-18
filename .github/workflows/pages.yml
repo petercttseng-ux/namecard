@@ -26,13 +26,12 @@ jobs:
       - name: Prepare public files
         run: |
           mkdir public
-          cp index.html style.css app.js contacts.js ocr.js image-tools.js cloud-store.js supabase-config.js public/
+          cp index.html style.css app.js contacts.js ocr.js image-tools.js cloud-store.js backend-config.js public/
           cp -r ocr-data vendor public/
           touch public/.nojekyll
-      - name: Configure shared Supabase project
+      - name: Configure shared SQLite backend
         env:
-          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+          NAMECARD_API_URL: ${{ vars.NAMECARD_API_URL }}
         run: node scripts/write-cloud-config.mjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

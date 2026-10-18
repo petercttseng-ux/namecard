@@ -1,0 +1,14 @@
+services:
+  namecard:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      NAMECARD_ADMIN_EMAIL: ${NAMECARD_ADMIN_EMAIL:?Set NAMECARD_ADMIN_EMAIL in .env}
+      NAMECARD_ADMIN_PASSWORD: ${NAMECARD_ADMIN_PASSWORD:?Set NAMECARD_ADMIN_PASSWORD in .env}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+    volumes:
+      - namecard-data:/app/data
+volumes:
+  namecard-data:

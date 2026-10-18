@@ -1,38 +1,54 @@
 # 德藏 · 曾振德副所長名片管理
 
-繁體中文名片管理應用程式，集中使用同一個 Supabase 名片資料庫。前端使用原生 JavaScript 與 Node.js 靜態伺服器；無需 npm 安裝執行依賴，OCR 元件已隨專案提供。
+名片資料庫已改用 **SQLite**。一台 Node.js 後端集中保存所有帳號共用的名片及照片，不需要 Supabase、第三方專案或 API 金鑰。保留原本的本機 OCR、分類搜尋、備份及舊資料搬移功能。
 
 ## 啟動
 
-需求 Node.js 20 以上：
+需求 **Node.js 24 以上**（使用內建 `node:sqlite`），無須安裝執行相依套件。
 
 ```sh
-cd /workspace/namecard
+cp .env.example .env
+# 在 .env 填入您自己的 NAMECARD_ADMIN_EMAIL 與至少 12 字元的 NAMECARD_ADMIN_PASSWORD
 npm start
 ```
 
-預設連接埠 3000，可透過 `PORT` 調整。執行 `npm test` 驗證資料、OCR 擷取及雲端傳輸邏輯。
+服務預設連接埠 3000。第一次啟動且資料庫尚無帳號時，才會建立 `.env` 指定的管理員。網站與 API 在同一個網址，登入後可使用同一份名片庫。沒有內建預設密碼。
 
-## Supabase 設定（必要）
+完整部署、帳號、持久化及備份方式見 [部署說明](DEPLOYMENT.md)。
 
-請依 [Supabase 設定說明](supabase/README.md) 建立專案、執行 [建表 SQL](supabase/schema.sql)、建立登入帳號及加入成員名單。尚未設定時，網站只顯示連線／登入畫面，不會將新資料存到 localStorage。
+## 資料與權限
 
-GitHub Pages 部署讀取 Repository Variables `SUPABASE_URL` 與 `SUPABASE_PUBLISHABLE_KEY`，讓所有裝置使用同一個專案。只可使用 publishable／anon 公開金鑰；不可使用 service_role 或 secret key。
+- SQLite 預設檔案 `data/namecard.sqlite`，可用 `NAMECARD_DB_PATH` 指定；`data/` 及 `.env` 已排除於 Git。
+- 名片及照片都儲存在此資料庫；不同裝置連接同一後端，即讀寫同一份資料。
+- 帳號由管理員在伺服器建立，沒有公開註冊入口；已建立的帳號都能讀寫共用名片庫。
+- 密碼使用加鹽 scrypt 雜湊；登入 Session 有期限，登出會在伺服器撤銷。資料庫只保存 Session Token 的雜湊。
+- 不同裝置同時編輯，會檢查版本以阻止過期覆寫；寫入失敗保留表單，不退回本機儲存。
+- 列表不載入所有照片，開啟名片才讀取照片；匯出備份分頁讀取完整資料。照片每張最多 3 MB。
+- 原瀏覽器名片會保留；登入後可明確確認搬移，示範資料不搬移。重複搬移相同識別碼不重複新增。
+- JSON 備份匯入採新增方式；同一備份重複匯入可能重複。單檔匯入上限 20 MB。
+- 可按「重新整理」同步其他裝置更新；頁面可見且沒有開啟對話框時，每 30 秒更新。非 Realtime 訂閱。
 
-## 功能與資料
+## GitHub Pages
 
-- 授權成員登入後共用名片、照片與交流備註；新增、編輯、刪除與收藏直接寫入 Supabase。
-- 搜尋、分類、重要聯絡人、最近新增與卡片／列表檢視。
-- JSON 備份匯入匯出、vCard 下載，支援既有瀏覽器名片明確確認後搬移；不自動搬移示範資料。
-- 同一名片的版本衝突會提示，避免不同裝置的過期編輯覆蓋；網路寫入失敗保留表單。
-- 文字及照片在同一個 PostgreSQL 資料表；以成員名單與 RLS 控制存取。照片每張上限 3 MB，列表按需載入照片。
-- 本機只儲存公開連線設定、登入 Session，以及未移除的舊名片備份。登入密碼不保存。跨裝置更新可手動重新整理，頁面閒置且可見時每 30 秒更新。
+**GitHub Pages 只能提供前端，不能執行 SQLite 或 Node.js API。** 建議將本專案前後端一起部署到有持久磁碟的 Node.js 主機。
 
-## GitHub Pages 部署
+若繼續使用 Pages，請先部署同一個後端，再於 GitHub Repository Variables 設定 `NAMECARD_API_URL=https://你的後端網域`，並在後端 `ALLOWED_ORIGINS` 設定 `https://petercttseng-ux.github.io`，最後重新執行 Pages Actions。所有裝置會使用這個後端。不需設定任何金鑰。
 
-在 GitHub Settings → Pages 將 Source 設為 GitHub Actions。設定 Supabase Repository Variables 後，推送 `main` 或手動執行 Deploy contact manager to GitHub Pages。網站公開檔案由工作流程明確列出，不包含 SQL、測試或管理員憑證。
+## 驗證
 
-瀏覽器內現有名片不會因程式更新自動消失或上傳；請從原本儲存資料的相同瀏覽器與網址登入並搬移。若原資料在其他網址，先匯出 JSON，再在新網站匯入。
+```sh
+npm test
+```
+
+測試直接啟動真實 Node.js API 與 SQLite，涵蓋登入、CRUD、照片、版本衝突、匯入去重、重啟保留、權限、CORS、私有檔案阻擋與跨 Session 共用。測試使用自己的暫存資料庫，不修改正式資料。
+
+可選瀏覽器測試（測試工具不屬於網站執行依賴）：
+
+```sh
+PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node scripts/verify-cloud-browser.cjs
+```
+
+此腳本自行啟動暫存 SQLite 後端及測試帳號，驗證真實 API，不再模擬 Supabase。
 
 ## 名片照片自動建檔
 

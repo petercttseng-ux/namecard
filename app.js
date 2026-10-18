@@ -1,4 +1,4 @@
-import defaultConfig from './supabase-config.js';
+import defaultConfig from './backend-config.js';
 import {CloudStore,validateConfig,prepareLegacy} from './cloud-store.js';
 import {loadPhoto,transformPhoto} from './image-tools.js';
 import {extractFields,recognizeCard} from './ocr.js';
@@ -108,17 +108,17 @@ $('#cancelCrop').onclick=()=>{$('#cropEditor').hidden=true;};
 $('#applyCrop').onclick=()=>{if(!cropRect||!cropImage)return;const sx=cropImage.width/cropCanvas.width,sy=cropImage.height/cropCanvas.height;changePhoto({crop:{x:cropRect.x*sx,y:cropRect.y*sy,width:cropRect.width*sx,height:cropRect.height*sy}});};
 
 
-// Supabase is the sole source of truth. Old browser data is only read for explicit migration.
-const configKey='de-cang-supabase-config-v1';
+// The SQLite backend is the sole source of truth. Old browser data is only read for explicit migration.
+const configKey='de-cang-backend-config-v1';
 function setCloudUI(){
  const ready=loaded&&!!store?.session;
  for(const id of ['addBtn','importBtn','exportBtn','migrateBtn','syncBtn'])$('#'+id).disabled=!ready||cloudBusy;
  document.querySelectorAll('.star-btn').forEach(button=>button.disabled=!ready||cloudBusy);
  $('#cardForm button[type=submit]').disabled=!ready||cloudBusy||ocrBusy;
- $('#connectionLabel').textContent=ready?'Supabase 共用資料庫':store?.session?'正在載入雲端資料':'尚未登入共用資料庫';
+ $('#connectionLabel').textContent=ready?'SQLite 共用資料庫':store?.session?'正在載入雲端資料':'尚未登入共用資料庫';
  $('#accountBtn').disabled=cloudBusy;$('#logoutBtn').disabled=cloudBusy;
  $('#accountBtn').textContent=ready?'☁ 已登入 · 管理連線':'登入雲端名片庫';
- $('#cloudNotice').textContent=cloudBusy?'正在與共用名片庫同步…':ready?`名片及照片集中儲存於 Supabase。上次同步 ${lastSynced}；其他裝置更新會於重新整理後顯示。`:'尚未連線至共用名片庫。請登入；原本機資料會保留，可於登入後搬移。';
+ $('#cloudNotice').textContent=cloudBusy?'正在與共用名片庫同步…':ready?`名片及照片集中儲存於 SQLite 後端。上次同步 ${lastSynced}；其他裝置更新會於重新整理後顯示。`:'尚未連線至共用名片庫。請登入；原本機資料會保留，可於登入後搬移。';
  $('#migrateBtn').hidden=!legacyRaw;
  $('#legacySection').hidden=!legacyRaw;
  $('#loginForm').hidden=!!store?.session;
@@ -131,8 +131,8 @@ function handleCloudError(error){
  toast(error.message);$('#cloudError').textContent=error.message;
 }
 function readConfig(){
- if(defaultConfig.url&&defaultConfig.publishableKey)return defaultConfig;
- try{return JSON.parse(localStorage.getItem(configKey)||'null');}catch{return null;}
+ if(defaultConfig.url)return defaultConfig;
+ try{return JSON.parse(localStorage.getItem(configKey)||'null')||{url:location.origin};}catch{return {url:location.origin};}
 }
 async function loadCloud(){
  if(cloudBusy||!store?.session)return;
@@ -151,10 +151,10 @@ async function importCloud(incoming){
 }
 async function initializeCloud(){
  const config=readConfig();const form=$('#configForm');
- if(config){form.elements.url.value=config.url||'';form.elements.publishableKey.value=config.publishableKey||'';try{store=new CloudStore(config);}catch(error){$('#cloudError').textContent=error.message;}}
- const fixed=!!(defaultConfig.url&&defaultConfig.publishableKey);
- form.elements.url.readOnly=fixed;form.elements.publishableKey.readOnly=fixed;form.querySelector('button').disabled=fixed;
- if(fixed)$('#configHelp').textContent='所有裝置使用部署時統一指定的同一個 Supabase 專案；連線資訊由管理員設定。';
+ if(config){form.elements.url.value=config.url||'';try{store=new CloudStore(config);}catch(error){$('#cloudError').textContent=error.message;}}
+ const fixed=!!(defaultConfig.url);
+ form.elements.url.readOnly=fixed;form.querySelector('button').disabled=fixed;
+ if(fixed)$('#configHelp').textContent='所有裝置使用部署時統一指定的同一台 SQLite 後端；連線資訊由管理員設定。';
  $('#configDetails').open=!store;
  setCloudUI();
  if(store?.session){try{await store.checkMembership();await loadCloud();}catch(error){store.setSession(null);handleCloudError(error);}}
@@ -163,7 +163,7 @@ async function initializeCloud(){
 $('#accountBtn').onclick=()=>{$('#cloudError').textContent='';setCloudUI();$('#cloudDialog').showModal();};
 $('#closeCloud').onclick=()=>$('#cloudDialog').close();
 $('#configForm').onsubmit=async event=>{
- event.preventDefault();if(defaultConfig.url&&defaultConfig.publishableKey)return;
+ event.preventDefault();if(defaultConfig.url)return;
  try{const config=validateConfig(Object.fromEntries(new FormData(event.target)));if(store?.session){toast('請先登出再變更資料庫連線。');return;}localStorage.setItem(configKey,JSON.stringify(config));store=new CloudStore(config);loaded=false;contacts=[];render();$('#cloudError').textContent='連線設定已儲存，請使用獲授權帳號登入。';$('#configDetails').open=false;}
  catch(error){$('#cloudError').textContent=error.message;}
 };
