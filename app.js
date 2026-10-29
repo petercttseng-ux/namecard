@@ -1,6 +1,7 @@
-import defaultConfig from './backend-config.js';
-import {CloudStore,validateConfig,prepareLegacy} from './cloud-store.js';
-import {loadPhoto,transformPhoto} from './image-tools.js';
+import firebaseConfig from './firebase-config.js';
+import {prepareLegacy} from './cloud-store.js';
+import {FirebaseStore,configured} from './firebase-store.js';
+import {loadPhoto,transformPhoto,compressForStorage} from './image-tools.js';
 import {extractFields,recognizeCard} from './ocr.js';
 import {categories,validateContacts,filterContacts} from './contacts.js';
 const $=s=>document.querySelector(s), key='de-cang-contacts-v1';
@@ -37,7 +38,7 @@ function updatePhoto(){for(const id of ['rotateLeft','rotateRight','cropPhoto'])
 $('#removePhoto').onclick=()=>{$('#cropEditor').hidden=true;ocrVersion++;ocrBusy=false;$('#ocrText').value='';$('#ocrStatus').textContent='照片已移除';photo='';$('#cardForm').elements.photo.value='';updatePhoto();};
 $('#cardForm').elements.photo.onchange=async e=>{const file=e.target.files[0];if(!file)return;if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>3*1024*1024){toast('請選擇 3 MB 以下的 PNG、JPEG 或 WebP 圖片。');e.target.value='';return;}const readVersion=++ocrVersion;ocrBusy=false;const reader=new FileReader();reader.onload=()=>{if(readVersion!==ocrVersion)return;photo=reader.result;updatePhoto();runRecognition();};reader.onerror=()=>toast('照片讀取失敗，請重新選擇。');reader.readAsDataURL(file);};
 $('#addBtn').onclick=()=>openEditor();document.querySelectorAll('#editor .close').forEach(b=>b.onclick=()=>$('#editor').close());
-$('#cardForm').onsubmit=async e=>{e.preventDefault();if(ocrBusy){toast('名片辨識中，請等待完成或關閉後重新開啟。');return;}const data=new FormData(e.target);if(!String(data.get('name')).trim()){toast('請填寫姓名。');return;}const previous=contacts.find(c=>c.id===editing);const c={id:editing||crypto.randomUUID(),createdAt:previous?.createdAt||new Date().toISOString(),photo,starred:data.has('starred'),demo:false};for(const k of ['name','title','company','category','phone','email','address','notes'])c[k]=String(data.get(k)||'').trim();if(!c.category)c.category='其他聯絡';if(await persist(editing?contacts.map(x=>x.id===editing?c:x):[c,...contacts])){$('#editor').close();toast(editing?'名片已更新':'名片已新增');}};
+$('#cardForm').onsubmit=async e=>{e.preventDefault();if(ocrBusy){toast('名片辨識中，請等待完成或關閉後重新開啟。');return;}const data=new FormData(e.target);if(!String(data.get('name')).trim()){toast('請填寫姓名。');return;}const previous=contacts.find(c=>c.id===editing);const c={id:editing||crypto.randomUUID(),createdAt:previous?.createdAt||new Date().toISOString(),photo,starred:data.has('starred'),demo:false};for(const k of ['name','title','company','category','phone','email','address','notes'])c[k]=String(data.get(k)||'').trim();if(!c.category)c.category='其他聯絡';try{c.photo=await compressForStorage(c.photo);}catch(error){toast(error.message);return;}if(await persist(editing?contacts.map(x=>x.id===editing?c:x):[c,...contacts])){$('#editor').close();toast(editing?'名片已更新':'名片已新增');}};
 async function showDetail(id){if(cloudBusy||!loaded)return;let c;cloudBusy=true;setCloudUI();try{c=await store.get(id);contacts=contacts.map(item=>item.id===id?c:item);render();}catch(error){handleCloudError(error);return;}finally{cloudBusy=false;setCloudUI();}$('#detailBody').innerHTML=`<div class="modal-head"><small>CONTACT PROFILE</small><button class="close" id="detailClose" aria-label="關閉">×</button></div>${c.demo?'<div class="demo-note">此名片為虛構示範資料，僅用於展示操作。請新增您的實際聯絡人。</div>':''}<div class="detail-person"><div class="contact-avatar">${esc(c.name[0])}</div><div><h2>${esc(c.name)}</h2><p>${esc(c.title)} · ${esc(c.category)}</p></div></div>${[['公司 / 機構',c.company],['電話',c.phone],['電子郵件',c.email],['地址',c.address],['備註 / 交流紀錄',c.notes]].map(([k,v])=>`<div class="detail-row"><small>${k}</small>${esc(v||'尚未填寫')}</div>`).join('')}${c.photo?`<img class="detail-photo" src="${esc(c.photo)}" alt="${esc(c.name)}的名片照片">`:''}<div class="modal-footer"><button class="danger" id="deleteContact">刪除名片</button><button class="secondary" id="vcard">下載 vCard</button><button class="primary" id="editContact">編輯名片</button></div>`;$('#detailClose').onclick=()=>$('#detail').close();$('#editContact').onclick=()=>{$('#detail').close();openEditor(c);};$('#deleteContact').onclick=async()=>{if(confirm(`確定刪除「${c.name}」的名片？此操作無法復原。`)&&await persist(contacts.filter(x=>x.id!==id))){$('#detail').close();toast('名片已刪除');}};$('#vcard').onclick=()=>{const v=s=>String(s||'').replace(/\\/g,'\\\\').replace(/\n/g,'\\n').replace(/[,;]/g,'\\$&');download(['BEGIN:VCARD','VERSION:3.0',`FN:${v(c.name)}`,`N:${v(c.name)};;;;`,`ORG:${v(c.company)}`,`TITLE:${v(c.title)}`,`TEL:${v(c.phone)}`,`EMAIL:${v(c.email)}`,`NOTE:${v(c.notes)}`,'END:VCARD'].join('\r\n'),`${c.name}.vcf`,'text/vcard;charset=utf-8');};$('#detail').showModal();}
 function download(data,name,type){const url=URL.createObjectURL(new Blob([data],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 $('#exportBtn').onclick=async()=>{if(!loaded||cloudBusy)return;cloudBusy=true;setCloudUI();try{const backup=await store.list({includePhotos:true});download(JSON.stringify(backup,null,2),`德藏名片備份-${new Date().toLocaleDateString('sv-SE')}.json`,'application/json');toast('已匯出雲端名片及照片備份，請妥善保管。');}catch(error){handleCloudError(error);}finally{cloudBusy=false;setCloudUI();}};$('#importBtn').onclick=()=>$('#importFile').click();$('#importFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>20*1024*1024)throw Error('備份檔案不得超過 20 MB。');const incoming=validateContacts(JSON.parse(await f.text()));if(contacts.length+incoming.length>5000)throw Error('匯入後不得超過 5,000 筆名片。');if(!incoming.length)throw Error('此備份沒有名片。');if(confirm(`將新增 ${incoming.length} 張名片至共用雲端庫，保留現有資料。是否繼續？`))await importCloud(incoming);}catch(err){toast(err instanceof SyntaxError?'無法讀取 JSON 備份，請確認檔案格式。':err.message);}finally{e.target.value='';}};
@@ -108,17 +109,16 @@ $('#cancelCrop').onclick=()=>{$('#cropEditor').hidden=true;};
 $('#applyCrop').onclick=()=>{if(!cropRect||!cropImage)return;const sx=cropImage.width/cropCanvas.width,sy=cropImage.height/cropCanvas.height;changePhoto({crop:{x:cropRect.x*sx,y:cropRect.y*sy,width:cropRect.width*sx,height:cropRect.height*sy}});};
 
 
-// The SQLite backend is the sole source of truth. Old browser data is only read for explicit migration.
-const configKey='de-cang-backend-config-v1';
+// Firebase is the sole source of truth. Old browser data is only read for explicit migration.
 function setCloudUI(){
  const ready=loaded&&!!store?.session;
  for(const id of ['addBtn','importBtn','exportBtn','migrateBtn','syncBtn'])$('#'+id).disabled=!ready||cloudBusy;
  document.querySelectorAll('.star-btn').forEach(button=>button.disabled=!ready||cloudBusy);
  $('#cardForm button[type=submit]').disabled=!ready||cloudBusy||ocrBusy;
- $('#connectionLabel').textContent=ready?'SQLite 共用資料庫':store?.session?'正在載入雲端資料':'尚未登入共用資料庫';
+ $('#connectionLabel').textContent=ready?'Firebase 共用資料庫':store?.session?'正在載入雲端資料':'尚未登入共用資料庫';
  $('#accountBtn').disabled=cloudBusy;$('#logoutBtn').disabled=cloudBusy;
  $('#accountBtn').textContent=ready?'☁ 已登入 · 管理連線':'登入雲端名片庫';
- $('#cloudNotice').textContent=cloudBusy?'正在與共用名片庫同步…':ready?`名片及照片集中儲存於 SQLite 後端。上次同步 ${lastSynced}；其他裝置更新會於重新整理後顯示。`:'尚未連線至共用名片庫。請登入；原本機資料會保留，可於登入後搬移。';
+ $('#cloudNotice').textContent=cloudBusy?'正在與共用名片庫同步…':ready?`名片及照片集中儲存於 Firebase。上次同步 ${lastSynced}；其他裝置更新會於重新整理後顯示。`:'尚未連線至共用名片庫。請登入；原本機資料會保留，可於登入後搬移。';
  $('#migrateBtn').hidden=!legacyRaw;
  $('#legacySection').hidden=!legacyRaw;
  $('#loginForm').hidden=!!store?.session;
@@ -129,10 +129,6 @@ function clearCloudView(){loaded=false;contacts=[];photo='';editing=null;ocrVers
 function handleCloudError(error){
  if(!store?.session)clearCloudView();
  toast(error.message);$('#cloudError').textContent=error.message;
-}
-function readConfig(){
- if(defaultConfig.url)return defaultConfig;
- try{return JSON.parse(localStorage.getItem(configKey)||'null')||{url:location.origin};}catch{return {url:location.origin};}
 }
 async function loadCloud(){
  if(cloudBusy||!store?.session)return;
@@ -145,36 +141,28 @@ async function importCloud(incoming){
  if(!loaded||cloudBusy)return;
  cloudBusy=true;setCloudUI();
  let count;
- try{count=await store.importContacts(incoming);try{contacts=await store.list();lastSynced=new Date().toLocaleTimeString('zh-TW');render();}catch(error){toast(`已儲存 ${count} 張名片，但更新畫面失敗，請按重新整理。`);return;}toast(`已將 ${count} 張名片儲存至共用雲端庫；相同識別碼不會重複搬移。`);}
+ try{for(const c of incoming)if(c.photo)c.photo=await compressForStorage(c.photo);count=await store.importContacts(incoming);try{contacts=await store.list();lastSynced=new Date().toLocaleTimeString('zh-TW');render();}catch(error){toast(`已儲存 ${count} 張名片，但更新畫面失敗，請按重新整理。`);return;}toast(`已將 ${count} 張名片儲存至共用雲端庫；相同識別碼不會重複搬移。`);}
  catch(error){handleCloudError(error);}
  finally{cloudBusy=false;setCloudUI();}
 }
 async function initializeCloud(){
- const config=readConfig();const form=$('#configForm');
- if(config){form.elements.url.value=config.url||'';try{store=new CloudStore(config);}catch(error){$('#cloudError').textContent=error.message;}}
- const fixed=!!(defaultConfig.url);
- form.elements.url.readOnly=fixed;form.querySelector('button').disabled=fixed;
- if(fixed)$('#configHelp').textContent='所有裝置使用部署時統一指定的同一台 SQLite 後端；連線資訊由管理員設定。';
- $('#configDetails').open=!store;
+ if(!configured(firebaseConfig)){$('#cloudError').textContent='尚未完成 Firebase 設定（firebase-config.js 缺少 apiKey 或 appId），請聯絡管理員。';setCloudUI();$('#cloudDialog').showModal();return;}
+ try{const sdk=await import('./vendor/firebase/firebase-sdk.js');const app=sdk.initializeApp(firebaseConfig);store=new FirebaseStore({app,sdk});await store.ready();}
+ catch(error){$('#cloudError').textContent='Firebase 載入失敗：'+error.message;setCloudUI();$('#cloudDialog').showModal();return;}
  setCloudUI();
- if(store?.session){try{await store.checkMembership();await loadCloud();}catch(error){store.setSession(null);handleCloudError(error);}}
+ if(store.session){try{await store.checkMembership();await loadCloud();}catch(error){handleCloudError(error);}}
  if(!loaded&&!$('#cloudDialog').open)$('#cloudDialog').showModal();
 }
 $('#accountBtn').onclick=()=>{$('#cloudError').textContent='';setCloudUI();$('#cloudDialog').showModal();};
 $('#closeCloud').onclick=()=>$('#cloudDialog').close();
-$('#configForm').onsubmit=async event=>{
- event.preventDefault();if(defaultConfig.url)return;
- try{const config=validateConfig(Object.fromEntries(new FormData(event.target)));if(store?.session){toast('請先登出再變更資料庫連線。');return;}localStorage.setItem(configKey,JSON.stringify(config));store=new CloudStore(config);loaded=false;contacts=[];render();$('#cloudError').textContent='連線設定已儲存，請使用獲授權帳號登入。';$('#configDetails').open=false;}
- catch(error){$('#cloudError').textContent=error.message;}
-};
 $('#loginForm').onsubmit=async event=>{
- event.preventDefault();if(!store){$('#cloudError').textContent='請先完成資料庫連線設定。';$('#configDetails').open=true;return;}
+ event.preventDefault();if(!store){$('#cloudError').textContent='Firebase 尚未載入，請重新整理頁面。';return;}
  const button=event.target.querySelector('button');button.disabled=true;$('#cloudError').textContent='正在登入…';
  try{await store.signIn(event.target.elements.email.value.trim(),event.target.elements.password.value);await loadCloud();if(loaded)$('#cloudDialog').close();}
  catch(error){handleCloudError(error);}
  finally{event.target.elements.password.value='';button.disabled=false;setCloudUI();}
 };
-$('#logoutBtn').onclick=async()=>{try{await store?.signOut();}catch{toast('已清除此裝置登入狀態；伺服器登出未確認。');}finally{clearCloudView();$('#cloudError').textContent='已登出此裝置。';}};
+$('#logoutBtn').onclick=async()=>{try{await store?.signOut();}catch{toast('已清除此裝置登入狀態。');}finally{clearCloudView();$('#cloudError').textContent='已登出此裝置。';}};
 $('#syncBtn').onclick=loadCloud;
 $('#legacyExport').onclick=()=>{if(legacyRaw)download(legacyRaw,'德藏原本機資料備份.json','application/json');};
 $('#migrateBtn').onclick=async()=>{try{const incoming=await prepareLegacy(legacyRaw,validateContacts);if(!incoming.length){toast('本機只有示範資料或沒有可搬移的實際名片。');return;}if(confirm(`將 ${incoming.length} 張本機名片搬移至共用雲端庫？原本機資料會保留，示範名片不會上傳。`))await importCloud(incoming);}catch(error){toast('本機資料無法搬移，請先下載原本機備份：'+error.message);}};

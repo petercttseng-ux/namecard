@@ -1,38 +1,35 @@
 # 德藏 · 曾振德副所長名片管理
 
-名片資料庫已改用 **SQLite**。一台 Node.js 後端集中保存所有帳號共用的名片及照片，不需要 Supabase、第三方專案或 API 金鑰。保留原本的本機 OCR、分類搜尋、備份及舊資料搬移功能。
+名片資料庫使用 **Firebase**（Authentication + Cloud Firestore，專案 `namecard-96e85`）。網站本身是純前端，放在 GitHub Pages 即可運作，不需要自架主機。保留原本的本機 OCR、分類搜尋、備份及舊資料搬移功能。
 
-## 啟動
+## Firebase 一次性設定
 
-需求 **Node.js 24 以上**（使用內建 `node:sqlite`），無須安裝執行相依套件。
+1. **網頁設定**：Firebase 主控台 → 專案設定 → 一般 → 您的應用程式（網頁應用程式，若沒有請按「新增應用程式 → 網頁」），把 SDK 設定中的 `apiKey` 與 `appId` 填入 `firebase-config.js`。這組設定可公開，不是密碼；資料權限由安全規則控制。
+2. **Authentication**：建構 → Authentication → Sign-in method → 啟用「電子郵件/密碼」。在「Users」分頁新增要使用名片庫的帳號（沒有公開註冊）。
+3. **Firestore**：建構 → Firestore Database → 建立資料庫（建議位置 `asia-east1` 台灣），選「正式版模式」。
+4. **授權帳號**：在 Firestore 新增集合 `members`，文件 ID 填該帳號在 Authentication 的「使用者 UID」，欄位可放 `email`（字串）。只有 `members` 裡有紀錄的帳號才能讀寫名片。
+5. **安全規則**：把 `firestore.rules` 內容貼到 Firestore → 規則 → 發布；或安裝 Firebase CLI 後在專案目錄執行 `firebase deploy --only firestore:rules`。
+6. **授權網域**：Authentication → 設定 → 已授權網域，確認包含 `petercttseng-ux.github.io`。
+
+完成後推送到 `main`，GitHub Actions 會自動測試並部署到 GitHub Pages。若 `firebase-config.js` 尚未填入 `apiKey` / `appId`，部署會停止並提示。
+
+## 本機測試
 
 ```sh
-cp .env.example .env
-# 在 .env 填入您自己的 NAMECARD_ADMIN_EMAIL 與至少 12 字元的 NAMECARD_ADMIN_PASSWORD
-npm start
+npm run dev   # 開啟 http://localhost:8000
 ```
 
-服務預設連接埠 3000。第一次啟動且資料庫尚無帳號時，才會建立 `.env` 指定的管理員。網站與 API 在同一個網址，登入後可使用同一份名片庫。沒有內建預設密碼。
-
-完整部署、帳號、持久化及備份方式見 [部署說明](DEPLOYMENT.md)。
+`localhost` 預設已在 Firebase 授權網域內。
 
 ## 資料與權限
 
-- SQLite 預設檔案 `data/namecard.sqlite`，可用 `NAMECARD_DB_PATH` 指定；`data/` 及 `.env` 已排除於 Git。
-- 名片及照片都儲存在此資料庫；不同裝置連接同一後端，即讀寫同一份資料。
-- 帳號由管理員在伺服器建立，沒有公開註冊入口；已建立的帳號都能讀寫共用名片庫。
-- 密碼使用加鹽 scrypt 雜湊；登入 Session 有期限，登出會在伺服器撤銷。資料庫只保存 Session Token 的雜湊。
-- 不同裝置同時編輯，會檢查版本以阻止過期覆寫；寫入失敗保留表單，不退回本機儲存。
-- 列表不載入所有照片，開啟名片才讀取照片；匯出備份分頁讀取完整資料。照片每張最多 3 MB。
-- 原瀏覽器名片會保留；登入後可明確確認搬移，示範資料不搬移。重複搬移相同識別碼不重複新增。
-- JSON 備份匯入採新增方式；同一備份重複匯入可能重複。單檔匯入上限 20 MB。
-- 可按「重新整理」同步其他裝置更新；頁面可見且沒有開啟對話框時，每 30 秒更新。非 Realtime 訂閱。
-
-## GitHub Pages
-
-**GitHub Pages 只能提供前端，不能執行 SQLite 或 Node.js API。** 建議將本專案前後端一起部署到有持久磁碟的 Node.js 主機。
-
-若繼續使用 Pages，請先部署同一個後端，再於 GitHub Repository Variables 設定 `NAMECARD_API_URL=https://你的後端網域`，並在後端 `ALLOWED_ORIGINS` 設定 `https://petercttseng-ux.github.io`，最後重新執行 Pages Actions。所有裝置會使用這個後端。不需設定任何金鑰。
+- 名片存於 Firestore `contacts` 集合；照片另存於 `photos` 集合，列表不載入照片，開啟名片才讀取。
+- Firestore 單筆上限 1 MiB，照片儲存前自動壓縮至約 900 KB 以下（上傳原圖仍限 3 MB）。
+- 所有授權帳號共用同一份名片庫；不同裝置同時編輯會檢查版本，阻止過期覆寫。
+- 原瀏覽器名片會保留；登入後可明確確認搬移，示範資料不搬移。重複搬移或重複匯入相同識別碼不會重複新增。
+- 可按「重新整理」同步其他裝置更新；頁面可見且沒有開啟對話框時，每 30 秒更新。
+- Firebase SDK 隨專案提供於 `vendor/firebase/`，不依賴外部 CDN。
+- Spark 免費方案（每日 5 萬次讀取、2 萬次寫入、1 GiB 儲存）對個人名片庫足夠。
 
 ## 驗證
 
@@ -40,15 +37,7 @@ npm start
 npm test
 ```
 
-測試直接啟動真實 Node.js API 與 SQLite，涵蓋登入、CRUD、照片、版本衝突、匯入去重、重啟保留、權限、CORS、私有檔案阻擋與跨 Session 共用。測試使用自己的暫存資料庫，不修改正式資料。
-
-可選瀏覽器測試（測試工具不屬於網站執行依賴）：
-
-```sh
-PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node scripts/verify-cloud-browser.cjs
-```
-
-此腳本自行啟動暫存 SQLite 後端及測試帳號，驗證真實 API，不再模擬 Supabase。
+測試以記憶體中的 Firebase 替身驗證登入、授權、CRUD、照片分存、版本衝突、匯入去重與照片大小限制，不連線正式資料庫。
 
 ## 名片照片自動建檔
 
@@ -69,4 +58,4 @@ OCR 使用隨專案提供的 Tesseract.js 5.1.1 與 tessdata_best 4.1.0 繁體�
 
 驗證涵蓋單元測試及 Chromium 實際圖片辨識。五張合成測試圖（小字、深色底、雙欄、輕度模糊、極小模糊文字）的五項欄位精確比對，由舊版 19/25 提升為新版 22/25；雙欄由 3/5 改為 5/5，極小模糊圖仍僅 2/5。這是有限的合成回歸案例，不能推論真實名片準確率。嚴重模糊、透視變形及直排文字仍可能需要重拍或人工修正。
 
-合成回歸測試結果保存在 `docs/ocr-validation.json`。可在已安裝 Playwright 與 Chromium 的開發機器，啟動應用程式後執行 `node scripts/benchmark-ocr.cjs` 重現；預設使用 `/usr/bin/chromium`，可用 `CHROMIUM_PATH` 指定。若 Playwright 安裝於其他路徑，可透過 `PLAYWRIGHT_MODULE` 指定套件路徑。此檢查需較多時間與記憶體，不是一般使用所需；一般邏輯測試仍使用 `npm test`。
+合成回歸測試結果保存在 `docs/ocr-validation.json`。可在已安裝 Playwright 與 Chromium 的開發機器，以 `python3 -m http.server 3000` 啟動網站後執行 `node scripts/benchmark-ocr.cjs` 重現；預設使用 `/usr/bin/chromium`，可用 `CHROMIUM_PATH` 指定。若 Playwright 安裝於其他路徑，可透過 `PLAYWRIGHT_MODULE` 指定套件路徑。此檢查需較多時間與記憶體，不是一般使用所需；一般邏輯測試仍使用 `npm test`。

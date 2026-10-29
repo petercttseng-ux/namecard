@@ -1,0 +1,36 @@
+rules_version = '2';
+// 只有 members/{uid} 文件存在的登入帳號可以讀寫名片；沒有公開註冊或匿名存取。
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isMember() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/members/$(request.auth.uid));
+    }
+    function validContact() {
+      let d = request.resource.data;
+      return d.name is string && d.name.size() > 0 && d.name.size() <= 200
+        && d.version is int && d.created_at is string
+        && d.keys().hasOnly(['id','name','title','company','phone','email','address','notes',
+                             'category','starred','created_at','has_photo','version','updated_at']);
+    }
+    // 帳號只能讀自己的授權紀錄；授權由管理員在 Firebase 主控台新增，前端無法寫入。
+    match /members/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+    match /contacts/{id} {
+      allow read, delete: if isMember();
+      allow create: if isMember() && validContact() && request.resource.data.version == 1;
+      allow update: if isMember() && validContact()
+        && request.resource.data.version == resource.data.version + 1;
+    }
+    match /photos/{id} {
+      allow read, delete: if isMember();
+      allow create, update: if isMember() && request.resource.data.data is string
+        && request.resource.data.data.matches('^data:image/(jpeg|png|webp);base64,.*');
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

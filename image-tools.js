@@ -59,3 +59,21 @@ export async function preparePhoto(source) {
   context.putImageData(pixels, 24, 24);
   return { color, enhanced: output.toDataURL('image/png') };
 }
+// Firebase stores each photo in one Firestore document (1 MiB cap), so shrink to <= limit characters.
+export async function compressForStorage(source, limit = 900_000) {
+  if (!source || source.length <= limit) return source;
+  const image = await loadPhoto(source);
+  for (const edge of [1800, 1400, 1100, 900]) {
+    const scale = Math.min(1, edge / Math.max(image.width, image.height));
+    const output = canvas(image.width * scale, image.height * scale);
+    const context = output.getContext('2d');
+    context.fillStyle = 'white';
+    context.fillRect(0, 0, output.width, output.height);
+    context.drawImage(image, 0, 0, output.width, output.height);
+    for (const quality of [0.85, 0.72, 0.6]) {
+      const encoded = output.toDataURL('image/jpeg', quality);
+      if (encoded.length <= limit) return encoded;
+    }
+  }
+  throw Error('名片照片過大，無法壓縮至雲端單筆上限，請裁切後重試。');
+}
